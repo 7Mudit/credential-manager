@@ -1,41 +1,48 @@
 // app/api/send/[id]/route.ts
+import { Redis } from "@upstash/redis";
 import { NextResponse } from "next/server";
-import path from "path";
-import fs from "fs/promises";
 import nodemailer from "nodemailer";
 
-const dataFilePath = path.join(process.cwd(), "data", "credentials.json");
+// Initialize Redis
+const redis = Redis.fromEnv();
 
 export async function POST(
   request: Request,
   context: { params: Promise<{ id: string }> }
 ) {
-  const params = await context.params;
-  const id = parseInt(params.id);
-
-  // Get credential data
-  const data = await fs.readFile(dataFilePath, "utf8");
-  const credentials = JSON.parse(data);
-
-  const cred = credentials.find((c) => c.id === id);
-
-  if (!cred) {
-    return NextResponse.json(
-      { status: "error", message: "Credential not found" },
-      { status: 404 }
-    );
-  }
-
-  // Send email
-  const transporter = nodemailer.createTransport({
-    service: "gmail",
-    auth: {
-      user: process.env.GMAIL_USER,
-      pass: process.env.GMAIL_APP_PASSWORD,
-    },
-  });
-
   try {
+    const params = await context.params;
+    const id = parseInt(params.id);
+
+    // Get credentials from Redis
+    const credentialsData = await redis.get("credentials");
+    if (!credentialsData) {
+      return NextResponse.json(
+        { status: "error", message: "No credentials found" },
+        { status: 404 }
+      );
+    }
+
+    // Use credentials directly - no parsing needed
+    const credentials = credentialsData;
+    const cred = credentials.find((c) => c.id === id);
+
+    if (!cred) {
+      return NextResponse.json(
+        { status: "error", message: "Credential not found" },
+        { status: 404 }
+      );
+    }
+
+    // Send email
+    const transporter = nodemailer.createTransport({
+      service: "gmail",
+      auth: {
+        user: process.env.GMAIL_USER,
+        pass: process.env.GMAIL_APP_PASSWORD,
+      },
+    });
+
     await transporter.sendMail({
       from: process.env.GMAIL_USER,
       to: cred.recipientEmail,
@@ -58,7 +65,8 @@ The Team
     const now = new Date().toISOString();
     cred.lastSent = now;
 
-    // await fs.writeFile(dataFilePath, JSON.stringify(credentials, null, 2));
+    // Save updated credentials back to Redis
+    await redis.set("credentials", credentials);
 
     return NextResponse.json({ status: "success", lastSent: now });
   } catch (error) {

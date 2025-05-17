@@ -1,75 +1,82 @@
 // app/api/credentials/route.ts
+import { Redis } from "@upstash/redis";
 import { NextResponse } from "next/server";
-import path from "path";
-import fs from "fs/promises";
 
-const dataFilePath = path.join(process.cwd(), "data", "credentials.json");
-
-// Helper function to ensure data file exists
-async function ensureDataFile() {
-  try {
-    await fs.access(path.dirname(dataFilePath));
-  } catch {
-    await fs.mkdir(path.dirname(dataFilePath), { recursive: true });
-  }
-
-  try {
-    await fs.access(dataFilePath);
-  } catch {
-    await fs.writeFile(dataFilePath, JSON.stringify([]));
-  }
-}
+// Initialize Redis
+const redis = Redis.fromEnv();
 
 // Get all credentials
 export async function GET() {
-  await ensureDataFile();
+  try {
+    // Get credentials from Redis
+    const data = await redis.get("credentials");
 
-  const data = await fs.readFile(dataFilePath, "utf8");
-  const credentials = JSON.parse(data);
+    // Return empty array if no data
+    if (!data) {
+      return NextResponse.json([]);
+    }
 
-  return NextResponse.json(credentials);
+    // Return data directly
+    return NextResponse.json(data);
+  } catch (error) {
+    console.error("Error fetching credentials:", error);
+    return NextResponse.json(
+      { status: "error", message: "Failed to fetch credentials" },
+      { status: 500 }
+    );
+  }
 }
 
 // Add a new credential
 export async function POST(request: Request) {
-  await ensureDataFile();
+  try {
+    const data = await request.json();
+    const { recipientEmail, key, value } = data;
 
-  const data = await request.json();
-  const { recipientEmail, key, value } = data;
+    if (!recipientEmail || !key || !value) {
+      return NextResponse.json(
+        { status: "error", message: "Missing required fields" },
+        { status: 400 }
+      );
+    }
 
-  if (!recipientEmail || !key || !value) {
+    // Get current credentials
+    const credentialsData = await redis.get("credentials");
+
+    // Handle null case and ensure we have an array
+    const credentials = Array.isArray(credentialsData) ? credentialsData : [];
+
+    // Check if key already exists
+    if (credentials.some((c) => c.key === key)) {
+      return NextResponse.json(
+        { status: "error", message: "Key already exists" },
+        { status: 400 }
+      );
+    }
+
+    // Add new credential
+    const newCredential = {
+      id:
+        credentials.length > 0
+          ? Math.max(...credentials.map((c) => c.id)) + 1
+          : 1,
+      recipientEmail,
+      key,
+      value,
+      lastSent: null,
+    };
+
+    credentials.push(newCredential);
+
+    // Save back to Redis
+    await redis.set("credentials", credentials);
+
+    return NextResponse.json({ status: "success", credential: newCredential });
+  } catch (error) {
+    console.error("Error adding credential:", error);
     return NextResponse.json(
-      { status: "error", message: "Missing required fields" },
-      { status: 400 }
+      { status: "error", message: "Failed to add credential" },
+      { status: 500 }
     );
   }
-
-  const fileData = await fs.readFile(dataFilePath, "utf8");
-  const credentials = JSON.parse(fileData);
-
-  // Check if key already exists
-  if (credentials.some((c) => c.key === key)) {
-    return NextResponse.json(
-      { status: "error", message: "Key already exists" },
-      { status: 400 }
-    );
-  }
-
-  // Add new credential
-  const newCredential = {
-    id:
-      credentials.length > 0
-        ? Math.max(...credentials.map((c) => c.id)) + 1
-        : 1,
-    recipientEmail,
-    key,
-    value,
-    lastSent: null,
-  };
-
-  credentials.push(newCredential);
-
-  await fs.writeFile(dataFilePath, JSON.stringify(credentials, null, 2));
-
-  return NextResponse.json({ status: "success", credential: newCredential });
 }
