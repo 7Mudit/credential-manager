@@ -58,7 +58,7 @@ The Team
     const now = new Date().toISOString();
     cred.lastSent = now;
 
-    await fs.writeFile(dataFilePath, JSON.stringify(credentials, null, 2));
+    // await fs.writeFile(dataFilePath, JSON.stringify(credentials, null, 2));
 
     return NextResponse.json({ status: "success", lastSent: now });
   } catch (error) {
