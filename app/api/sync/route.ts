@@ -1,9 +1,8 @@
 // app/api/sync/route.ts
-import { Redis } from "@upstash/redis";
+import { kv } from "@vercel/kv";
 import { NextResponse } from "next/server";
 
 // Initialize Redis
-const redis = Redis.fromEnv();
 
 export async function GET() {
   // All your credentials in the exact format you provided
@@ -362,7 +361,7 @@ export async function GET() {
 
   try {
     // Store in Redis
-    await redis.set("credentials", JSON.stringify(credentials));
+    await kv.set("credentials", JSON.stringify(credentials));
 
     return NextResponse.json({
       status: "success",

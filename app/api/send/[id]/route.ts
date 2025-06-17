@@ -1,10 +1,7 @@
 // app/api/send/[id]/route.ts
-import { Redis } from "@upstash/redis";
+import { kv } from "@vercel/kv";
 import { NextResponse } from "next/server";
 import nodemailer from "nodemailer";
-
-// Initialize Redis
-const redis = Redis.fromEnv();
 
 export async function POST(
   request: Request,
@@ -15,7 +12,7 @@ export async function POST(
     const id = parseInt(params.id);
 
     // Get credentials from Redis
-    const credentialsData = await redis.get("credentials");
+    const credentialsData = await kv.get("credentials");
     if (!credentialsData) {
       return NextResponse.json(
         { status: "error", message: "No credentials found" },
@@ -66,7 +63,7 @@ The Team
     cred.lastSent = now;
 
     // Save updated credentials back to Redis
-    await redis.set("credentials", credentials);
+    await kv.set("credentials", credentials);
 
     return NextResponse.json({ status: "success", lastSent: now });
   } catch (error) {

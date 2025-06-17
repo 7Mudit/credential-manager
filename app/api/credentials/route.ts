@@ -1,15 +1,12 @@
 // app/api/credentials/route.ts
-import { Redis } from "@upstash/redis";
+import { kv } from "@vercel/kv";
 import { NextResponse } from "next/server";
-
-// Initialize Redis
-const redis = Redis.fromEnv();
 
 // Get all credentials
 export async function GET() {
   try {
     // Get credentials from Redis
-    const data = await redis.get("credentials");
+    const data = await kv.get("credentials");
 
     // Return empty array if no data
     if (!data) {
@@ -41,7 +38,7 @@ export async function POST(request: Request) {
     }
 
     // Get current credentials
-    const credentialsData = await redis.get("credentials");
+    const credentialsData = await kv.get("credentials");
 
     // Handle null case and ensure we have an array
     const credentials = Array.isArray(credentialsData) ? credentialsData : [];
@@ -69,7 +66,7 @@ export async function POST(request: Request) {
     credentials.push(newCredential);
 
     // Save back to Redis
-    await redis.set("credentials", credentials);
+    await kv.set("credentials", credentials);
 
     return NextResponse.json({ status: "success", credential: newCredential });
   } catch (error) {
